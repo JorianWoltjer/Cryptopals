@@ -1,5 +1,6 @@
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
+from pwn import xor
 
 KEY = get_random_bytes(16)
 IV = b'\x00'*16
@@ -21,7 +22,7 @@ def escape(s):
     return s.replace(b"%", b"%25").replace(b";", b"%3B").replace(b"=", b"%3D")
 
 def user_input(s):
-    s = escape(s)
+    s = escape(s)  # Filter
     data = b"comment1=cooking%20MCs;userdata=" + s + b";comment2=%20like%20a%20pound%20of%20bacon"
     
     cipher = AES.new(KEY, AES.MODE_CBC, IV)
@@ -32,6 +33,7 @@ def check(encrypted):
     cipher = AES.new(KEY, AES.MODE_CBC, IV)
     
     s = cipher.decrypt(encrypted)
+    print(s)
     
     return b";admin=true;" in s
 
@@ -42,42 +44,34 @@ def test_decrypt(encrypted):  # May not be used for attack
 
 # Attack
 
-def split_blocks(data, block_size=16):
-    blocks = []
-    for i in range(0, len(data), block_size):
-        blocks.append(data[i:i+block_size])
-        
-    return blocks
+def xor(s1, s2):
+    """byte XOR *without* repeating key, after key runs out plaintext continues"""
+    assert len(s1) >= len(s2), "First argument should be longest"
+    max_length = len(s1)
+    min_length = len(s2)
+    return bytes(s1[i] ^ s2[i] if i < min_length else s1[i] for i in range(max_length))
 
-def bitstring_to_bytes(s):
-    return int(s, 2).to_bytes((len(s) + 7) // 8, byteorder='big')
-
-def flip_bit(s, i):
-    binary = list(bin(int.from_bytes(s, 'big'))[2:])
-    binary[i] = "0" if binary[i] == "1" else "1"
+def flip_to_goal(plaintext, ciphertext, goal, input_block):
+    """
+    :param plaintext: The original plaintext
+    :param ciphertext: The ciphertext after encrypting original plaintext
+    :param goal: The plaintext that the resulting ciphertext should decrypt to
+    :param input_block: The number of the block that the input is in
+    :return: The altered ciphertext that decrypts to goal
+    """
+    assert (len(plaintext)-1)//16 == (len(goal)-1)//16, "Plaintext and goal must have same number of blocks"
     
-    return bitstring_to_bytes(''.join(binary))
+    difference = xor(plaintext, goal)  # XOR is the same as flipping bits
+    assert difference[:16] == b"\x00"*16, "First block cannot be changed"
+    difference = b"\x00"*16*input_block + difference  # Padding to get difference in right place
+    
+    return xor(ciphertext, difference[16:])  # Flip the bits on ciphertext (one block before)
 
-# A = 01000001
-# C = 01000011
-# ; = 00111011
-# : = 00111010
-# = = 00111101
-# < = 00111100
 
-normal = user_input(b"A"*16 + b':admin<true')
+plaintext = b"A"*16 + b"B"*16  # First send BBBB...
+ciphertext = user_input(plaintext)
+goal = b"A"*16 + b";admin=true;"  # Then change to inject admin=true without going through escape() function
 
-b = 2
-blocks = split_blocks(normal)
-changed = blocks[b]
-print(changed)
-changed = flip_bit(changed, -1 + 1*8)  # [1] character = : -> ;
-changed = flip_bit(changed, -1 + 7*8)  # [7] character = < -> =
-print(changed)
-blocks[b] = changed
-payload = b''.join(blocks)
+new_ciphertext = flip_to_goal(plaintext, ciphertext, goal, input_block=2)
 
-# print(split_blocks(test_decrypt(normal)))
-# print(split_blocks(test_decrypt(payload)))
-
-print(check(payload))
+print(check(new_ciphertext))  # "Submit"

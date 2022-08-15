@@ -84,16 +84,6 @@ def split_blocks(data, block_size=16):
         
     return blocks
 
-def bitstring_to_bytes(s):
-    return int(s, 2).to_bytes((len(s) + 7) // 8, byteorder='big')
-
-def flip_bit(s, i):
-    binary = list(bin(int.from_bytes(s, 'big'))[2:])
-    binary[i] = "0" if binary[i] == "1" else "1"
-    print(len(binary))
-    
-    return bitstring_to_bytes(''.join(binary))
-
 def byte_xor(ba1, ba2):
     return bytes([_a ^ _b for _a, _b in zip(ba1, ba2)])
 
