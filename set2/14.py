@@ -13,20 +13,24 @@ import itertools
 
 SECRET_STRING = b64decode("Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK")
 KEY = get_random_bytes(16)
-PREFIX = get_random_bytes(randint(1, 100))  # Prefix length is random every time script starts
+PREFIX = get_random_bytes(randint(1, 100))  # Prefix length is random every time the script starts
+
+ALPHABET = list(b" {}_Ee3Aa@4RrIi1Oo0Tt7NnSs25$LlCcUuDdPpMmHhGg6BbFfYyWwKkVvXxZzJjQq89-,.!?'\"\n\r#%&()*+/\\:;<=>[]^`|~")  # Most common
+ALPHABET.extend(c for c in range(256) if c not in ALPHABET)  # Add rest of bytes
+
 
 def pad(s, n):
     pad_length = n - len(s) % n
     return s + bytes([pad_length])*pad_length
 
-def encrypt(data):
+def encrypt(plaintext):
     """Encrypt data and return ciphertext. Point this to the target oracle"""
     sleep(0.001)
-    data = PREFIX + data + SECRET_STRING
+    plaintext = PREFIX + plaintext + SECRET_STRING
     
     cipher = AES.new(KEY, AES.MODE_ECB)
 
-    return cipher.encrypt(pad(data, 16))
+    return cipher.encrypt(pad(plaintext, 16))
 
 # Attack
 
@@ -59,15 +63,13 @@ def find_block_size():
 def crack_letter(start, cracked, block_size, input_block):
     block_n = len(cracked) // block_size + input_block
     
-    book = {}
-    for i in range(256):
+    goal = encrypt(start)[block_size*block_n:block_size*(block_n+1)]
+    
+    for i in tqdm(ALPHABET, position=2, leave=False):
         data = encrypt(start + cracked + bytes([i]))
         block = data[block_size*block_n:block_size*(block_n+1)]
-        book[block] = i
-        
-    block = encrypt(start)[block_size*block_n:block_size*(block_n+1)]
-    
-    return book[block]
+        if block == goal:
+            return i
 
 def attack():
     print("Finding block length...")
@@ -92,10 +94,11 @@ def attack():
     plaintext = b''
     for i in tqdm(range(suffix_length), position=1, leave=False):  # Progress bar may mess up some printing when suffix is long
         start = padding + b"A"*(block_size-(len(plaintext)%block_size)-1)
-        try:
-            plaintext += bytes([crack_letter(start, plaintext, block_size, input_block)])
+        new_byte = crack_letter(start, plaintext, block_size, input_block)
+        if new_byte is not None:  # If not found
+            plaintext += bytes([new_byte])
             tqdm.write(repr(plaintext), end="\r")
-        except KeyError:
+        else:
             break
     
     print()  # Final newline after \r

@@ -53,8 +53,8 @@ def get_random_ciphertext():
     return IV + cipher.encrypt(pad(data))
 
 def validate_padding(ciphertext):
-    sleep(0.001)
     """Decrypts the ciphertext and validates if the padding is correct. Point this to the target oracle"""
+    sleep(0.001)
     cipher = AES.new(KEY, AES.MODE_CBC, IV)
     
     data = cipher.decrypt(ciphertext)
