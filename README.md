@@ -1,6 +1,6 @@
 # Cryptopals
 
-My solution scripts to the Cryptopals challenges (set 1-4). All written in Python
+My solution scripts to the [Cryptopals](https://cryptopals.com/) challenges (set 1-4). All written in Python
 
 ## Highlights
 
