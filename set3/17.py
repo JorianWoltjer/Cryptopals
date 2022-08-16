@@ -18,20 +18,20 @@ from tqdm import tqdm
 KEY = get_random_bytes(16)
 IV = b"\x00"*16
 
-def pad(s, block_size=16):
+def pad(s, block_size=16):  # PKCS#7 padding
     pad_length = block_size - len(s) % block_size
     return s + bytes([pad_length])*pad_length
 
 def unpad(s):
-    padding = s[-1]
-    for c in s[-padding:]:
-        if c != padding:
+    padding_byte = s[-1]  # Get last byte
+    for c in s[-padding_byte:]:  # Check last n bytes
+        if c != padding_byte:  # If not the same
             raise Exception("Invalid padding")
 
-    return s[:-padding]
+    return s[:-padding_byte]  # If valid, return without padding bytes
 
 def get_random_ciphertext():
-    strings = [
+    secrets = [
         "MDAwMDAwTm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmc=", 
         "MDAwMDAxV2l0aCB0aGUgYmFzcyBraWNrZWQgaW4gYW5kIHRoZSBWZWdhJ3MgYXJlIHB1bXBpbic=", 
         "MDAwMDAyUXVpY2sgdG8gdGhlIHBvaW50LCB0byB0aGUgcG9pbnQsIG5vIGZha2luZw==", 
@@ -46,8 +46,7 @@ def get_random_ciphertext():
     
     cipher = AES.new(KEY, AES.MODE_CBC, IV)
     
-    data = b64decode(random.choice(strings))
-    # data = b64decode(strings[0])
+    data = b64decode(random.choice(secrets))  # Chooses random from secrets
     
     # ! Returns IV and data, otherwise first block can't be decrypted
     return IV + cipher.encrypt(pad(data))
@@ -58,7 +57,7 @@ def validate_padding(ciphertext):
     cipher = AES.new(KEY, AES.MODE_CBC, IV)
     
     data = cipher.decrypt(ciphertext)
-    # print(split_blocks(data))
+    # print(split_blocks(data))  # To see the attack/debugging
     
     try:
         unpad(data)
@@ -67,44 +66,39 @@ def validate_padding(ciphertext):
     else:
         return True
 
-def test_decrypt(encrypted):
-    cipher = AES.new(KEY, AES.MODE_CBC, IV)
-    
-    data = cipher.decrypt(encrypted)
-    
-    return data
-
-
 # Attack
 
 def split_blocks(data, block_size=16):
     blocks = []
     for i in range(0, len(data), block_size):
         blocks.append(data[i:i+block_size])
-        
+    
     return blocks
 
 def byte_xor(ba1, ba2):
     return bytes([_a ^ _b for _a, _b in zip(ba1, ba2)])
 
 
-def crack_block(blocks, cracked_plaintext=b''):
+def crack_block(blocks, plaintext_so_far=b''):
     plaintext = b''
     intermediate = b''
-    injection = b''
+    flipped_bits = b''
     for i in tqdm(range(1, 16+1), position=2, leave=False, desc="Current block"):
+        # Reorder list to make the original ciphertext byte at this position last
         possible_bytes = list(range(blocks[0][16-i]+1, 256)) + list(range(0, blocks[0][16-i]+1))
-        for byte in tqdm(possible_bytes, position=3, leave=False, desc="Current byte"):  # Test ciphertext byte last
-            changed = blocks[0][:16-i] + bytes([byte]) + injection + blocks[1]
-            if validate_padding(changed):  # also valid if \x02\x02
-                intermediate = bytes([byte ^ i]) + intermediate  # Reverse
-                plaintext = bytes([byte ^ i ^ blocks[0][16-i]]) + plaintext
-                tqdm.write(repr(cracked_plaintext + plaintext), end="\r")
+        for byte in tqdm(possible_bytes, position=3, leave=False, desc="Current byte"):  # Brute-force
+            # Submit: Block before i, brute-force byte, flip needed bits in padding, original last block
+            changed = blocks[0][:16-i] + bytes([byte]) + flipped_bits + blocks[1]
+            if validate_padding(changed):  # Also valid if \x02\x02
+                # Now we know:
+                intermediate = bytes([byte ^ i]) + intermediate  # Get difference
+                plaintext = bytes([byte ^ i ^ blocks[0][16-i]]) + plaintext  # Remove known byte to be left with plaintext
+                tqdm.write(repr(plaintext_so_far + plaintext), end="\r")
                 break
         
-        goal = bytes([i+1])*i  # b'\x03\x03'
-        injection = byte_xor(goal, intermediate)
-        changed = blocks[0][:16-i] + injection + blocks[0][16:]
+        # For next iteration:
+        goal = bytes([i+1])*i  # \x03\x03, to make brute-force of \x03 valid
+        flipped_bits = byte_xor(goal, intermediate)  # XOR needed to flip bits into correct values
     
     return plaintext
 
@@ -112,8 +106,8 @@ def attack(ciphertext):
     blocks = split_blocks(ciphertext)
 
     plaintext = b''
-    for i in tqdm(range(len(blocks)-1), position=1, leave=False, desc="Total"):
-        plaintext += crack_block(blocks[i:i+2], cracked_plaintext=plaintext)
+    for i in tqdm(range(len(blocks)-1), position=1, leave=False, desc="Total"):  # Brute-force one block at a time
+        plaintext += crack_block(blocks[i:i+2], plaintext_so_far=plaintext)
     
     print()  # Final newline after \r
     return plaintext
