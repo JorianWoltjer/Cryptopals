@@ -6,7 +6,8 @@ import os
 BLOCK_SIZE = 16
 KEY = os.urandom(16)
 
-ALPHABET = ascii_letters + " ,.!?"
+ALPHABET = list(b" {}_Ee3Aa@4RrIi1Oo0Tt7NnSs25$LlCcUuDdPpMmHhGg6BbFfYyWwKkVvXxZzJjQq89-,.!?'\"\n\r#%&()*+/\\:;<=>[]^`|~")  # Most common (in order)
+
 
 data = [
     "SSBoYXZlIG1ldCB0aGVtIGF0IGNsb3NlIG9mIGRheQ==", 
@@ -68,8 +69,8 @@ def ctr_mode(s, key):
     return byte_xor(s, ctr_keystream(key, nonce=0))  # Fixed nonce to 0
 
 def score_text(s):
-    """Simply sum the number of characters in that are in ALPHABET"""
-    return sum(bytes([c]) in bytes(ALPHABET, "utf-8") for c in s)
+    """Sum the index of the character in an ALPHABET ordered by frequency. Common characters get a high value, and uncommon letters get a low value"""
+    return sum(len(ALPHABET) - ALPHABET.index(c) for c in s if c in ALPHABET)
 
 all_encryped = [ctr_mode(b64decode(s), KEY) for s in data]
 
