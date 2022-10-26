@@ -1,9 +1,10 @@
 from Crypto.Cipher import AES
 from base64 import b64decode
-from string import ascii_letters, digits
+from string import ascii_letters
+import os
 
 BLOCK_SIZE = 16
-KEY = b"YELLOW SUBMARINE"  # TODO: Make random later
+KEY = os.urandom(16)
 
 ALPHABET = ascii_letters + " ,.!?"
 
@@ -67,12 +68,13 @@ def ctr_mode(s, key):
     return byte_xor(s, ctr_keystream(key, nonce=0))  # Fixed nonce to 0
 
 def score_text(s):
+    """Simply sum the number of characters in that are in ALPHABET"""
     return sum(bytes([c]) in bytes(ALPHABET, "utf-8") for c in s)
 
-encryped = [ctr_mode(b64decode(s), KEY) for s in data]
+all_encryped = [ctr_mode(b64decode(s), KEY) for s in data]
 
 longest = 0
-for e in encryped:
+for e in all_encryped:
     if len(e) > longest:
         longest = len(e)
         
@@ -81,7 +83,7 @@ for i in range(longest):  # Go over every letter in ciphertexts
     best_score = 0
     best_letter = None
     for letter in range(256):
-        plaintext = [ciphertext[i] ^ letter for ciphertext in encryped if i < len(ciphertext)]
+        plaintext = [ciphertext[i] ^ letter for ciphertext in all_encryped if i < len(ciphertext)]
         score = score_text(plaintext) / len(plaintext)
         
         if score > best_score:
@@ -91,5 +93,5 @@ for i in range(longest):  # Go over every letter in ciphertexts
     key += bytes([best_letter])
 
     
-for e in encryped:
+for e in all_encryped:
     print(byte_xor(key, e))
